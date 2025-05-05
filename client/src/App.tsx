@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { apiRequest } from "./lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+// Component imports
+import ChatInterface from "@/components/ChatInterface";
 
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
@@ -16,144 +21,236 @@ import FAQ from "@/components/FAQ";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
 
+// Define types for state
+type Event = {
+  type: string;
+  event_id?: string;
+  timestamp?: string;
+  [key: string]: any;
+};
+
+type Conversation = {
+  type: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  isLoading?: boolean;
+  isError?: boolean;
+};
+
 function App() {
   const [isSessionActive, setIsSessionActive] = useState(false);
-  const [events, setEvents] = useState([]);
-  const [dataChannel, setDataChannel] = useState(null);
-  const peerConnection = useRef(null);
-  const audioElement = useRef(null);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
-  async function startSession() {
-    // Get a session token for OpenAI Realtime API
-    const tokenResponse = await fetch("/token");
-    const data = await tokenResponse.json();
-    const EPHEMERAL_KEY = data.client_secret.value;
-
-    // Create a peer connection
-    const pc = new RTCPeerConnection();
-
-    // Set up to play remote audio from the model
-    audioElement.current = document.createElement("audio");
-    audioElement.current.autoplay = true;
-    pc.ontrack = (e) => (audioElement.current.srcObject = e.streams[0]);
-
-    // Add local audio track for microphone input in the browser
-    const ms = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-    });
-    pc.addTrack(ms.getTracks()[0]);
-
-    // Set up data channel for sending and receiving events
-    const dc = pc.createDataChannel("oai-events");
-    setDataChannel(dc);
-
-    // Start the session using the Session Description Protocol (SDP)
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    const baseUrl = "https://api.openai.com/v1/realtime";
-    const model = "gpt-4o-realtime-preview-2024-12-17";
-    const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
-      method: "POST",
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${EPHEMERAL_KEY}`,
-        "Content-Type": "application/sdp",
-      },
-    });
-
-    const answer = {
-      type: "answer",
-      sdp: await sdpResponse.text(),
-    };
-    await pc.setRemoteDescription(answer);
-
-    peerConnection.current = pc;
-  }
-
-  // Stop current session, clean up peer connection and data channel
-  function stopSession() {
-    if (dataChannel) {
-      dataChannel.close();
-    }
-
-    if (peerConnection.current) {
-      peerConnection.current.getSenders().forEach((sender) => {
-        if (sender.track) {
-          sender.track.stop();
-        }
-      });
-
-      peerConnection.current.close();
-    }
-
-    setIsSessionActive(false);
-    setDataChannel(null);
-    peerConnection.current = null;
-  }
-
-  // Send a message to the model
-  function sendClientEvent(message) {
-    if (dataChannel) {
-      const timestamp = new Date().toLocaleTimeString();
-      message.event_id = message.event_id || crypto.randomUUID();
-
-      // send event before setting timestamp since the backend peer doesn't expect this field
-      dataChannel.send(JSON.stringify(message));
-
-      // if guard just in case the timestamp exists by miracle
-      if (!message.timestamp) {
-        message.timestamp = timestamp;
-      }
-      setEvents((prev) => [message, ...prev]);
-    } else {
-      console.error(
-        "Failed to send message - no data channel available",
-        message,
-      );
-    }
-  }
-
-  // Send a text message to the model
-  function sendTextMessage(message) {
-    const event = {
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: message,
-          },
-        ],
-      },
-    };
-
-    sendClientEvent(event);
-    sendClientEvent({ type: "response.create" });
-  }
-
-  // Attach event listeners to the data channel when a new one is created
+  // Check if the OpenAI API key is configured when the component mounts
   useEffect(() => {
-    if (dataChannel) {
-      // Append new server events to the list
-      dataChannel.addEventListener("message", (e) => {
-        const event = JSON.parse(e.data);
-        if (!event.timestamp) {
-          event.timestamp = new Date().toLocaleTimeString();
+    const checkApiStatus = async () => {
+      try {
+        const response = await fetch('/api/openai/status');
+        const data = await response.json();
+        
+        if (data.status !== 'configured') {
+          toast({
+            title: 'OpenAI API Key',
+            description: 'Missing or invalid OpenAI API key. Some features might not work properly.',
+            variant: 'destructive',
+          });
         }
+      } catch (error) {
+        console.error('Error checking API status:', error);
+      }
+    };
+    
+    checkApiStatus();
+  }, [toast]);
 
-        setEvents((prev) => [event, ...prev]);
+  // Start a new chat session
+  async function startSession() {
+    try {
+      setIsLoading(true);
+      
+      // Create a new session
+      const sessionResponse = await apiRequest('/api/sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          language: 'en', // Default language
+        }),
       });
-
-      // Set session active when the data channel is opened
-      dataChannel.addEventListener("open", () => {
+      
+      if (sessionResponse) {
+        setSessionId(sessionResponse.id);
         setIsSessionActive(true);
         setEvents([]);
+        setConversations([]);
+        
+        // Add initial greeting
+        const greeting = {
+          type: 'conversation',
+          role: 'assistant',
+          content: 'Hello! I\'m TurtleChat AI assistant. How can I help you today?',
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        
+        setConversations(prev => [greeting, ...prev]);
+        
+        // Add a welcome event
+        const welcomeEvent = {
+          type: 'session.created',
+          session_id: sessionResponse.id,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        
+        setEvents(prev => [welcomeEvent, ...prev]);
+      }
+    } catch (error) {
+      console.error('Error starting session:', error);
+      toast({
+        title: 'Session Error',
+        description: 'Failed to start a new chat session. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // End the current session
+  function stopSession() {
+    setIsSessionActive(false);
+    setSessionId(null);
+    
+    // Add session end event
+    const endEvent = {
+      type: 'session.ended',
+      timestamp: new Date().toLocaleTimeString(),
+    };
+    
+    setEvents(prev => [endEvent, ...prev]);
+    
+    toast({
+      title: 'Session Ended',
+      description: 'Your chat session has been ended.',
+    });
+  }
+
+  // Record a client event
+  function sendClientEvent(message: Event) {
+    if (isSessionActive) {
+      const timestamp = new Date().toLocaleTimeString();
+      const eventId = crypto.randomUUID();
+      
+      const newEvent: Event = {
+        ...message,
+        event_id: message.event_id || eventId,
+        timestamp: message.timestamp || timestamp,
+      };
+      
+      setEvents(prev => [newEvent, ...prev]);
+      return newEvent;
+    } else {
+      console.error('Failed to record event - no active session');
+      return null;
+    }
+  }
+
+  // Send a text message to the AI
+  async function sendTextMessage(message: string) {
+    if (!isSessionActive || !message.trim()) {
+      return;
+    }
+    
+    try {
+      // Add user message to conversations
+      const userMessage: Conversation = {
+        type: 'conversation',
+        role: 'user',
+        content: message,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setConversations(prev => [userMessage, ...prev]);
+      
+      // Record the event
+      sendClientEvent({
+        type: 'message.sent',
+        content: message,
+      });
+      
+      // Show loading indicator
+      const loadingMessage: Conversation = {
+        type: 'conversation',
+        role: 'assistant',
+        content: '...',
+        isLoading: true,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setConversations(prev => [loadingMessage, ...prev]);
+      
+      // Send to OpenAI API
+      interface ChatResponse {
+        response: string;
+      }
+      
+      const response = await apiRequest<ChatResponse>('/api/openai/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+        }),
+      });
+      
+      // Remove loading message and add response
+      setConversations(prev => {
+        const filtered = prev.filter(msg => !msg.isLoading);
+        const aiMessage: Conversation = {
+          type: 'conversation',
+          role: 'assistant',
+          content: response.response || 'I\'m having trouble responding right now.',
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        
+        return [aiMessage, ...filtered];
+      });
+      
+      // Record the response event
+      sendClientEvent({
+        type: 'message.received',
+        length: response.response?.length || 0,
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      
+      // Remove loading message and add error message
+      setConversations(prev => {
+        const filtered = prev.filter(msg => !msg.isLoading);
+        const errorMessage: Conversation = {
+          type: 'conversation',
+          role: 'assistant',
+          content: 'Sorry, I encountered an error processing your request.',
+          isError: true,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        
+        return [errorMessage, ...filtered];
+      });
+      
+      toast({
+        title: 'Message Error',
+        description: 'Failed to send your message. Please try again.',
+        variant: 'destructive',
       });
     }
-  }, [dataChannel]);
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
