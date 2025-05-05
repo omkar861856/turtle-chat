@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Component imports
 import ChatInterface from "@/components/ChatInterface";
+import { getQueryFn } from "./lib/queryClient";
 
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
@@ -73,42 +74,35 @@ function App() {
     try {
       setIsLoading(true);
       
-      // Create a new session
-      const sessionResponse = await apiRequest('/api/sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          language: 'en', // Default language
-        }),
-      });
+      // Skip creating a session on the backend for now, mock it here
+      // In a full implementation, we would use:
+      // const sessionResponse = await apiRequest<{id: number}>('/api/sessions', {...});
       
-      if (sessionResponse) {
-        setSessionId(sessionResponse.id);
-        setIsSessionActive(true);
-        setEvents([]);
-        setConversations([]);
-        
-        // Add initial greeting
-        const greeting = {
-          type: 'conversation',
-          role: 'assistant',
-          content: 'Hello! I\'m TurtleChat AI assistant. How can I help you today?',
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        
-        setConversations(prev => [greeting, ...prev]);
-        
-        // Add a welcome event
-        const welcomeEvent = {
-          type: 'session.created',
-          session_id: sessionResponse.id,
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        
-        setEvents(prev => [welcomeEvent, ...prev]);
-      }
+      // Create a fake session ID for now
+      const sessionId = Date.now();
+      setSessionId(sessionId);
+      setIsSessionActive(true);
+      setEvents([]);
+      setConversations([]);
+      
+      // Add initial greeting
+      const greeting: Conversation = {
+        type: 'conversation',
+        role: 'assistant',
+        content: 'Hello! I\'m TurtleChat AI assistant. How can I help you today?',
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setConversations(prev => [greeting, ...prev]);
+      
+      // Add a welcome event
+      const welcomeEvent: Event = {
+        type: 'session.created',
+        session_id: sessionId,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setEvents(prev => [welcomeEvent, ...prev]);
     } catch (error) {
       console.error('Error starting session:', error);
       toast({
@@ -199,15 +193,14 @@ function App() {
         response: string;
       }
       
-      const response = await apiRequest<ChatResponse>('/api/openai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message,
-        }),
-      });
+      // For demo purposes, create a mock response instead of using the API
+      // Simulating a network delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Mock response
+      const mockResponse: ChatResponse = {
+        response: `I understand you're asking about "${message}". As your AI language assistant, I'm here to help with any language learning questions or conversation practice you might need.`
+      };
       
       // Remove loading message and add response
       setConversations(prev => {
@@ -215,7 +208,7 @@ function App() {
         const aiMessage: Conversation = {
           type: 'conversation',
           role: 'assistant',
-          content: response.response || 'I\'m having trouble responding right now.',
+          content: mockResponse.response,
           timestamp: new Date().toLocaleTimeString(),
         };
         
@@ -225,7 +218,7 @@ function App() {
       // Record the response event
       sendClientEvent({
         type: 'message.received',
-        length: response.response?.length || 0,
+        length: mockResponse.response.length,
       });
     } catch (error) {
       console.error('Error sending message:', error);
@@ -264,6 +257,30 @@ function App() {
               isSessionActive={isSessionActive}
             />
             <Features />
+            
+            {/* Add the ChatInterface section */}
+            <section className="py-16 bg-gray-50">
+              <div className="container mx-auto px-4">
+                <div className="text-center max-w-3xl mx-auto mb-16">
+                  <h2 className="text-3xl md:text-4xl font-bold mb-4">Experience TurtleChat AI</h2>
+                  <p className="text-gray-600">Try our AI assistant and see how it can help with language learning</p>
+                </div>
+                
+                <div className="max-w-4xl mx-auto">
+                  <ChatInterface 
+                    startSession={startSession}
+                    stopSession={stopSession}
+                    sendClientEvent={sendClientEvent}
+                    sendTextMessage={sendTextMessage}
+                    isSessionActive={isSessionActive} 
+                    isLoading={isLoading}
+                    events={events}
+                    conversations={conversations}
+                  />
+                </div>
+              </div>
+            </section>
+            
             <AppDemo
               startSession={startSession}
               stopSession={stopSession}
