@@ -1,7 +1,9 @@
 import OpenAI from "openai";
 
 // Set up the OpenAI client
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ 
+  apiKey: process.env.OPENAI_API_KEY || "",  // Use empty string as fallback for type safety
+});
 
 // Basic text analysis example
 export async function chatCompletion(text: string): Promise<string> {
@@ -13,10 +15,10 @@ export async function chatCompletion(text: string): Promise<string> {
       messages: [{ role: "user", content: prompt }],
     });
 
-    return response.choices[0].message.content;
-  } catch (error) {
+    return response.choices[0].message.content || "";
+  } catch (error: any) {
     console.error("OpenAI chat completion error:", error);
-    throw new Error(`OpenAI API error: ${error.message}`);
+    throw new Error(`OpenAI API error: ${error.message || 'Unknown error'}`);
   }
 }
 
@@ -36,20 +38,23 @@ export async function analyzeSentiment(text: string): Promise<{
         },
         {
           role: "user",
-          content: text,
+          content: text || "",
         },
       ],
       response_format: { type: "json_object" },
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    // We know the content exists because we're using response_format: { type: "json_object" }
+    // But TypeScript doesn't know this, so we need to handle the null case
+    const content = response.choices[0].message.content || "{}";
+    const result = JSON.parse(content);
 
     return {
       rating: Math.max(1, Math.min(5, Math.round(result.rating))),
       confidence: Math.max(0, Math.min(1, result.confidence)),
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("OpenAI sentiment analysis error:", error);
-    throw new Error(`OpenAI API error: ${error.message}`);
+    throw new Error(`OpenAI API error: ${error.message || 'Unknown error'}`);
   }
 }
