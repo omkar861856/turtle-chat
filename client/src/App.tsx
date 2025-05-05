@@ -344,6 +344,9 @@ function App() {
                     isLoading={isLoading}
                     events={events}
                     conversations={conversations}
+                    startListening={startListening}
+                    isListening={isListening}
+                    isSpeaking={isSpeaking}
                   />
                 </div>
               </div>

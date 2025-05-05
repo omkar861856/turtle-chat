@@ -99,6 +99,34 @@ const ChatInterface = ({
           >
             Send
           </Button>
+          
+          {/* Voice controls */}
+          {startListening && (
+            <Button
+              type="button"
+              variant={isListening ? "destructive" : "outline"}
+              size="icon"
+              onClick={startListening}
+              disabled={!isSessionActive || isSpeaking}
+              title={isListening ? "Stop listening" : "Start voice input"}
+              className="ml-1"
+            >
+              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
+          )}
+          
+          {/* Sound indicator */}
+          <div className="ml-1">
+            {isSpeaking ? (
+              <div title="Speaking...">
+                <Volume2 className="h-5 w-5 text-primary animate-pulse" />
+              </div>
+            ) : (
+              <div title="Silent">
+                <VolumeX className="h-5 w-5 text-gray-300" />
+              </div>
+            )}
+          </div>
         </form>
       </div>
     </div>
