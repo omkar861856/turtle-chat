@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -22,7 +22,7 @@ import FAQ from "@/components/FAQ";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
 
-// Define types for state
+// Define types used across the app
 type Event = {
   type: string;
   event_id?: string;
@@ -39,6 +39,10 @@ type Conversation = {
   isError?: boolean;
 };
 
+// For Web Speech API - TypeScript compatibility
+type SpeechRecognitionType = any;
+type SpeechRecognitionEventType = any;
+
 function App() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
@@ -47,27 +51,74 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  // Check if the OpenAI API key is configured when the component mounts
+  // Initialize speech recognition and synthesis
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+  const recognition = useRef<SpeechRecognitionType | null>(null);
+
+  // Set up speech recognition on component mount
   useEffect(() => {
-    const checkApiStatus = async () => {
-      try {
-        const response = await fetch('/api/openai/status');
-        const data = await response.json();
-        
-        if (data.status !== 'configured') {
-          toast({
-            title: 'OpenAI API Key',
-            description: 'Missing or invalid OpenAI API key. Some features might not work properly.',
-            variant: 'destructive',
-          });
-        }
-      } catch (error) {
-        console.error('Error checking API status:', error);
+    if (typeof window !== 'undefined' && 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      // @ts-ignore - browser compatibility for Web Speech API
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition.current = new SpeechRecognition();
+      recognition.current.continuous = false;
+      recognition.current.interimResults = false;
+      recognition.current.lang = 'en-US';
+
+      recognition.current.onresult = (event: SpeechRecognitionEventType) => {
+        const transcript = event.results[0][0].transcript;
+        sendTextMessage(transcript);
+        setIsListening(false);
+      };
+
+      recognition.current.onerror = () => {
+        setIsListening(false);
+        toast({
+          title: 'Voice Recognition Error',
+          description: 'There was an error with the speech recognition. Please try again.',
+          variant: 'destructive',
+        });
+      };
+
+      recognition.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+
+    return () => {
+      if (recognition.current) {
+        recognition.current.abort();
+      }
+      if (synth) {
+        synth.cancel();
       }
     };
-    
-    checkApiStatus();
   }, [toast]);
+
+  // Function to start voice recognition
+  const startListening = () => {
+    if (recognition.current && !isListening) {
+      try {
+        recognition.current.start();
+        setIsListening(true);
+      } catch (error) {
+        console.error('Speech recognition error:', error);
+        setIsListening(false);
+      }
+    }
+  };
+
+  // Function to speak a response
+  const speakResponse = (text: string) => {
+    if (synth) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      synth.speak(utterance);
+    }
+  };
 
   // Start a new chat session
   async function startSession() {
@@ -197,10 +248,24 @@ function App() {
       // Simulating a network delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Mock response
-      const mockResponse: ChatResponse = {
-        response: `I understand you're asking about "${message}". As your AI language assistant, I'm here to help with any language learning questions or conversation practice you might need.`
-      };
+      // Mock response - using simple patterns for demo purposes
+      let responseText = '';
+      
+      if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
+        responseText = `Hello there! I'm TurtleChat AI, your language learning assistant. How can I help you today?`;
+      } else if (message.toLowerCase().includes('language') || message.toLowerCase().includes('learn')) {
+        responseText = `Learning a new language can be exciting! I can help with vocabulary, grammar, or conversation practice. What language are you interested in?`;
+      } else if (message.toLowerCase().includes('spanish')) {
+        responseText = `¡Hola! Spanish is a beautiful language. Some basic phrases to start with: 'Hola' (Hello), 'Gracias' (Thank you), 'Por favor' (Please). Would you like to learn more phrases?`;
+      } else if (message.toLowerCase().includes('french')) {
+        responseText = `Bonjour! French is a lovely language. Some basic phrases: 'Bonjour' (Hello), 'Merci' (Thank you), 'S'il vous plaît' (Please). Would you like to practice pronunciation?`;
+      } else if (message.toLowerCase().includes('practice') || message.toLowerCase().includes('conversation')) {
+        responseText = `Conversation practice is key to language learning! Let's have a simple exchange. Try responding to: "What did you do this weekend?"`;
+      } else {
+        responseText = `I understand you're asking about "${message}". As your AI language assistant, I'm here to help with any language learning questions or conversation practice you might need.`;
+      }
+      
+      const mockResponse: ChatResponse = { response: responseText };
       
       // Remove loading message and add response
       setConversations(prev => {
@@ -214,6 +279,9 @@ function App() {
         
         return [aiMessage, ...filtered];
       });
+      
+      // Speak the response if enabled
+      speakResponse(mockResponse.response);
       
       // Record the response event
       sendClientEvent({

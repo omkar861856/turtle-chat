@@ -3,6 +3,7 @@ import ChatConversation from './ChatConversation';
 import EventLog from './EventLog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 
 interface ChatInterfaceProps {
   startSession: () => Promise<void>;
@@ -13,6 +14,9 @@ interface ChatInterfaceProps {
   isLoading: boolean;
   events: any[];
   conversations: any[];
+  startListening?: () => void;
+  isListening?: boolean;
+  isSpeaking?: boolean;
 }
 
 const ChatInterface = ({
@@ -24,6 +28,9 @@ const ChatInterface = ({
   isLoading,
   events,
   conversations,
+  startListening,
+  isListening = false,
+  isSpeaking = false,
 }: ChatInterfaceProps) => {
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('chat');
