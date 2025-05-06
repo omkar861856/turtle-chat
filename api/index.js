@@ -4,14 +4,14 @@ import express2 from "express";
 // server/routes.ts
 import { createServer } from "http";
 async function registerRoutes(app2) {
-  app2.get("/token", async (req, res) => {
+  app2.get("/api/token", async (req, res) => {
     try {
       if (!process.env.OPENAI_API_KEY) {
         return res.status(500).json({ error: "OpenAI API key not configured" });
       }
       const clientSecret = {
         value: process.env.OPENAI_API_KEY,
-        expires_at: new Date(Date.now() + 3600 * 1e3).toISOString()
+        expires_at: new Date(Date.now() + 3600 * 1e3).toISOString(),
       };
       res.json({ client_secret: clientSecret });
     } catch (error) {
@@ -40,26 +40,26 @@ var vite_config_default = defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
+      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+    },
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
+    emptyOutDir: true,
   },
-  envDir: path.resolve(import.meta.dirname)
+  envDir: path.resolve(import.meta.dirname),
 });
 
 // server/vite.ts
 import { nanoid } from "nanoid";
 var viteLogger = createLogger();
 function log(message, source = "express") {
-  const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+  const formattedTime = /* @__PURE__ */ new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
-    hour12: true
+    hour12: true,
   });
   console.log(`${formattedTime} [${source}] ${message}`);
 }
@@ -67,7 +67,7 @@ async function setupVite(app2, server) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
-    allowedHosts: true
+    allowedHosts: true,
   };
   const vite = await createViteServer({
     ...vite_config_default,
@@ -77,10 +77,10 @@ async function setupVite(app2, server) {
       error: (msg, options) => {
         viteLogger.error(msg, options);
         process.exit(1);
-      }
+      },
     },
     server: serverOptions,
-    appType: "custom"
+    appType: "custom",
   });
   app2.use(vite.middlewares);
   app2.use("*", async (req, res, next) => {
@@ -128,7 +128,7 @@ app.use((req, res, next) => {
   const path3 = req.path;
   let capturedJsonResponse = void 0;
   const originalResJson = res.json;
-  res.json = function(bodyJson, ...args) {
+  res.json = function (bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
@@ -164,7 +164,7 @@ if (app.get("env") === "development") {
     const port = process.env.Port || 5003;
     server.listen(
       {
-        port
+        port,
       },
       () => {
         log(`serving on port ${port}`);
@@ -173,6 +173,4 @@ if (app.get("env") === "development") {
   })();
 }
 var index_default = app;
-export {
-  index_default as default
-};
+export { index_default as default };
