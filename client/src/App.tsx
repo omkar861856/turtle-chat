@@ -36,50 +36,55 @@ export default function App() {
 
   async function startSession() {
     const tokenResponse = await fetch("/token");
+    console.log("tokenResponse", tokenResponse);
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY: string = data.client_secret.value;
 
-    const pc = new RTCPeerConnection();
+    try {
+      const pc = new RTCPeerConnection();
 
-    audioElement.current = document.createElement("audio");
-    audioElement.current.autoplay = true;
+      audioElement.current = document.createElement("audio");
+      audioElement.current.autoplay = true;
 
-    pc.ontrack = (e: RTCTrackEvent) => {
-      const stream = e.streams[0];
-      if (audioElement.current) {
-        audioElement.current.srcObject = stream;
-      }
-    };
+      pc.ontrack = (e: RTCTrackEvent) => {
+        const stream = e.streams[0];
+        if (audioElement.current) {
+          audioElement.current.srcObject = stream;
+        }
+      };
 
-    const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
-    pc.addTrack(ms.getTracks()[0]);
+      const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
+      pc.addTrack(ms.getTracks()[0]);
 
-    const dc = pc.createDataChannel("oai-events");
-    setDataChannel(dc);
+      const dc = pc.createDataChannel("oai-events");
+      setDataChannel(dc);
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-    const baseUrl = "https://api.openai.com/v1/realtime";
-    const model = "gpt-4o-realtime-preview-2024-12-17";
+      const baseUrl = "https://api.openai.com/v1/realtime";
+      const model = "gpt-4o-realtime-preview-2024-12-17";
 
-    const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
-      method: "POST",
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${EPHEMERAL_KEY}`,
-        "Content-Type": "application/sdp",
-      },
-    });
+      const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
+        method: "POST",
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${EPHEMERAL_KEY}`,
+          "Content-Type": "application/sdp",
+        },
+      });
 
-    const answer: RTCSessionDescriptionInit = {
-      type: "answer",
-      sdp: await sdpResponse.text(),
-    };
+      const answer: RTCSessionDescriptionInit = {
+        type: "answer",
+        sdp: await sdpResponse.text(),
+      };
 
-    await pc.setRemoteDescription(answer);
+      await pc.setRemoteDescription(answer);
 
-    peerConnection.current = pc;
+      peerConnection.current = pc;
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   function stopSession() {
