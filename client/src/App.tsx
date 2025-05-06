@@ -35,7 +35,7 @@ export default function App() {
   const audioElement = useRef<HTMLAudioElement | null>(null);
 
   async function startSession() {
-    const tokenResponse = await fetch("/token");
+    const tokenResponse = await fetch("/api/token");
     console.log("tokenResponse", tokenResponse);
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY: string = data.client_secret.value;
